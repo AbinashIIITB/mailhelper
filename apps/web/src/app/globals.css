@@ -1,0 +1,32 @@
+@import "tailwindcss";
+
+/* Light theme only. Plain, basic look. */
+:root {
+  --background: #eeeeee;
+  --foreground: #111111;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: Arial, Helvetica, sans-serif;
+}
+
+html {
+  color-scheme: light;
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+/* Keep every container sharp-edged, no rounded corners anywhere. */
+* {
+  border-radius: 0 !important;
+}
+
+a {
+  color: #1a0dab;
+}

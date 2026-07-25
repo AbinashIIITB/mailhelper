@@ -1,0 +1,18 @@
+node_modules/
+.next/
+dist/
+.turbo/
+*.tsbuildinfo
+
+# Env files with secrets
+.env
+.env.local
+.env.*.local
+
+# Local agent/tooling config (may contain secrets in permission rules)
+.claude/
+
+# Prisma generated client
+packages/db/node_modules/.prisma/
+
+.DS_Store
