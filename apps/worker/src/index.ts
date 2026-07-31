@@ -1,3 +1,4 @@
+import http from "node:http";
 import { Worker, type Job } from "bullmq";
 import type { Transporter } from "nodemailer";
 import { prisma } from "@mailhelper/db";
@@ -155,16 +156,67 @@ const worker = new Worker<CampaignSendJob>(CAMPAIGN_SEND_QUEUE, processJob, {
   concurrency: 3,
   // Throttle to protect the sender's Gmail account from anti-spam blocks.
   limiter: { max: 1, duration: 1200 },
+  // Seconds to block on an idle queue before re-issuing the poll. The default
+  // (5s) burns ~500k Redis commands/month doing nothing, which is the entire
+  // Upstash free-tier allowance. A new job still wakes the block instantly.
+  drainDelay: Number(process.env.WORKER_DRAIN_DELAY ?? 30),
 });
 
-worker.on("ready", () => console.log("[worker] ready, waiting for jobs"));
+let ready = false;
+let lastJobAt = 0;
+worker.on("ready", () => {
+  ready = true;
+  console.log("[worker] ready, waiting for jobs");
+});
+worker.on("active", () => {
+  lastJobAt = Date.now();
+});
 worker.on("failed", (job, err) =>
   console.error(`[worker] job ${job?.id} failed:`, err.message),
 );
-worker.on("error", (err) => console.error("[worker] error:", err));
+worker.on("error", (err) => {
+  ready = false;
+  console.error("[worker] error:", err);
+});
+
+/**
+ * Health endpoint. Free tiers on Render/Railway/Fly only host *web* services,
+ * so the worker has to answer HTTP on $PORT to be deployable there — and the
+ * uptime ping that keeps a free instance from sleeping needs a URL to hit.
+ */
+const port = Number(process.env.PORT ?? 8080);
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz" || req.url === "/") {
+    res.writeHead(ready ? 200 : 503, { "content-type": "application/json" });
+    res.end(JSON.stringify({ status: ready ? "ok" : "connecting" }));
+    return;
+  }
+  res.writeHead(404).end();
+});
+server.listen(port, () => console.log(`[worker] health server on :${port}`));
+
+/**
+ * A free instance is suspended after ~15 minutes without an inbound request.
+ * The producer wakes it when it enqueues, but a large campaign (throttled to
+ * ~1 email/1.2s) can outlive that window, so self-request while jobs are still
+ * flowing. Once the queue goes quiet the pings stop and the instance is allowed
+ * to sleep as the free tier intends.
+ */
+const publicUrl = process.env.RENDER_EXTERNAL_URL ?? process.env.WORKER_PUBLIC_URL;
+const IDLE_AFTER_MS = 10 * 60 * 1000;
+if (publicUrl) {
+  setInterval(
+    () => {
+      if (Date.now() - lastJobAt > IDLE_AFTER_MS) return;
+      fetch(`${publicUrl.replace(/\/$/, "")}/healthz`).catch(() => {});
+    },
+    5 * 60 * 1000,
+  ).unref();
+}
 
 async function shutdown() {
   console.log("[worker] shutting down…");
+  server.close();
   await worker.close();
   for (const { transport } of transports.values()) transport.close();
   await prisma.$disconnect();

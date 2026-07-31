@@ -59,3 +59,8 @@ connected to Redis.
 To actually send, connect a Gmail with **2-Step Verification on** and a
 16-character **App Password** (https://myaccount.google.com/apppasswords) in
 **Settings**. Mail Helper verifies the credentials before saving.
+
+## Deploying
+
+See [DEPLOY.md](DEPLOY.md) — Vercel + Render + Neon + Upstash, all free tiers,
+no credit card.

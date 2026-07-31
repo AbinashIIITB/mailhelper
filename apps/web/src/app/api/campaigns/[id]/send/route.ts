@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@mailhelper/db";
-import { getCampaignQueue } from "@mailhelper/queue";
+import { getCampaignQueue, wakeWorker } from "@mailhelper/queue";
 import { auth } from "@/auth";
 
 export async function POST(
@@ -69,6 +69,8 @@ export async function POST(
       data: { campaignId: id, recipientId: r.id },
     })),
   );
+
+  await wakeWorker();
 
   return NextResponse.json({ ok: true, queued: campaign.recipients.length });
 }

@@ -1,0 +1,31 @@
+# Render Blueprint for the BullMQ worker (apps/worker).
+#
+# Render's free tier only offers *web* services, not background workers, so the
+# worker exposes a /healthz endpoint and is deployed as a free web service.
+# Free instances sleep after 15 minutes without an inbound request — the
+# .github/workflows/keepalive.yml cron pings /healthz to keep it awake.
+#
+# Free plan requires no credit card. 750 instance-hours/month covers one
+# always-on service (744 hours in a 31-day month).
+services:
+  - type: web
+    name: mailhelper-worker
+    runtime: node
+    plan: free
+    region: oregon
+    branch: main
+    healthCheckPath: /healthz
+    buildCommand: npm ci && npm run db:generate
+    startCommand: npm run start -w worker
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      # Set these in the Render dashboard — `sync: false` keeps them out of git.
+      - key: DATABASE_URL
+        sync: false
+      - key: REDIS_URL
+        sync: false
+      - key: ENCRYPTION_KEY
+        sync: false
+      - key: DAILY_SEND_LIMIT
+        value: "450"
