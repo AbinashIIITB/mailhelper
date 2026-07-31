@@ -7,8 +7,11 @@ them with GitHub.
 | --- | --- | --- |
 | `apps/web` (Next.js) | **Vercel** Hobby | no card |
 | `apps/worker` (BullMQ) | **Render** free web service | no card, 750 instance-hours/mo |
-| Postgres | **Neon** free | no card, 0.5 GB |
+| Postgres | **Supabase** free | no card, 500 MB, 2 projects |
 | Redis | **Upstash** free | no card, 256 MB / 500k commands per month |
+
+Supabase does not offer Redis, so the BullMQ queue still needs Upstash — the
+two are separate accounts.
 
 > Free tiers change. Each of these required no card at the time of writing —
 > if a signup ever asks for one, see [Alternatives](#alternatives) below.
@@ -33,23 +36,34 @@ app encrypts the user's Gmail app password with it; the worker decrypts it to
 send. Different keys means every send fails. Changing it later makes already
 saved Gmail connections unreadable — users would have to re-enter them.
 
-## 2. Postgres — Neon
+## 2. Postgres — Supabase
 
-1. Sign up at [neon.tech](https://neon.tech) with GitHub.
-2. **New Project** → name `mailhelper`, pick the region closest to you.
-3. From the connection-string widget, copy **both**:
-   - the **Pooled** string (host contains `-pooler`) → this is your `DATABASE_URL`
-   - the **Direct** / unpooled string → used once, in step 4
+1. Sign up at [supabase.com](https://supabase.com) with GitHub.
+2. **New Project** → name `mailhelper`, pick the region closest to you, and save
+   the database password it generates.
+3. **Connect** (top bar) → **ORMs** → **Prisma**. Copy the two URLs it shows:
 
-   Both should end in `?sslmode=require`.
+   | Env var | Supabase calls it | Port |
+   | --- | --- | --- |
+   | `DATABASE_URL` | Transaction pooler | `6543` |
+   | `DIRECT_URL` | Session pooler | `5432` |
 
-Pooled is what serverless functions need; a Vercel deploy opens a new
-connection per cold start and would exhaust the direct-connection limit.
+   Both are on the same `...pooler.supabase.com` host. `DATABASE_URL` must keep
+   its `?pgbouncer=true&connection_limit=1` query string.
+
+Why two: Vercel opens a fresh connection on every cold start, so the app has to
+go through the transaction pooler or it will exhaust Postgres' connection
+limit. But schema changes can't run through a transaction pooler, so
+`prisma db push` uses the session pooler instead.
+
+> Use the **session pooler** for `DIRECT_URL`, not the "direct connection"
+> string (`db.<ref>.supabase.co`). Direct connections are IPv6-only, and most
+> home and campus networks can't reach them.
 
 ## 3. Redis — Upstash
 
 1. Sign up at [upstash.com](https://upstash.com) with GitHub.
-2. **Create Database** → Redis → same region as Neon → **Free** plan.
+2. **Create Database** → Redis → same region as Supabase → **Free** plan.
 3. Leave **Eviction disabled**. BullMQ stores job state in Redis; if Redis is
    allowed to evict keys, queued emails silently disappear.
 4. Copy the `rediss://default:...@....upstash.io:6379` URL → this is your
@@ -57,13 +71,22 @@ connection per cold start and would exhaust the direct-connection limit.
 
 ## 4. Create the database tables
 
-From your machine, using the **direct** (unpooled) Neon string:
+From your machine. Put both URLs in `packages/db/.env` (it's gitignored):
 
 ```bash
-DATABASE_URL="postgresql://…neon.tech/mailhelper?sslmode=require" npm run db:push
+DATABASE_URL="postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1"
+DIRECT_URL="postgresql://postgres.<ref>:<pw>@aws-0-<region>.pooler.supabase.com:5432/postgres"
 ```
 
-Re-run this whenever `packages/db/prisma/schema.prisma` changes.
+then:
+
+```bash
+npm run db:push
+```
+
+Re-run this whenever `packages/db/prisma/schema.prisma` changes. Note that this
+file currently points at your local Docker Postgres — swap the values to deploy,
+or keep two copies and switch between them.
 
 ## 5. Worker — Render
 
@@ -73,7 +96,7 @@ Re-run this whenever `packages/db/prisma/schema.prisma` changes.
    [`render.yaml`](render.yaml) and proposes a free web service called
    `mailhelper-worker`.
 4. It will prompt for the three secrets marked `sync: false`:
-   - `DATABASE_URL` — the **pooled** Neon string
+   - `DATABASE_URL` — the Supabase **transaction pooler** string (port 6543)
    - `REDIS_URL` — the Upstash `rediss://` URL
    - `ENCRYPTION_KEY` — from step 1
 5. **Apply**. When the deploy finishes, copy the service URL, e.g.
@@ -93,11 +116,14 @@ Re-run this whenever `packages/db/prisma/schema.prisma` changes.
 
    | Name | Value |
    | --- | --- |
-   | `DATABASE_URL` | pooled Neon string |
+   | `DATABASE_URL` | Supabase transaction pooler string (port 6543) |
    | `REDIS_URL` | Upstash `rediss://` URL |
    | `ENCRYPTION_KEY` | from step 1 — **same value as Render** |
    | `AUTH_SECRET` | from step 1 |
    | `WORKER_WAKE_URL` | `https://mailhelper-worker.onrender.com/healthz` |
+
+   `DIRECT_URL` is deliberately **not** here, and not on Render either. Only
+   `prisma db push` reads it, and that runs from your machine.
 
 5. **Deploy.**
 
@@ -147,12 +173,38 @@ blocking read instantly, so the higher value costs no latency.
 - **Render free: 750 instance-hours/month.** One service running continuously
   uses ~744 in a 31-day month, and this one sleeps when idle, so you'll stay
   well under. Adding a second free service would not fit.
-- **Neon free autosuspends** after ~5 minutes idle; the first query afterwards
-  takes an extra second or so.
+- **Supabase free pauses a project after 7 days without API requests**, and
+  resuming is a manual click in their dashboard — the app is fully down until
+  you do it. This is the one sharp edge of the free stack, and it bites exactly
+  when you'd expect: a tool used a few times a term sits idle in between. See
+  [Keeping Supabase awake](#keeping-supabase-awake).
+- **Supabase free: 500 MB database, 2 active projects, no backups.** Storage is
+  a non-issue here — recipients and campaigns are tiny rows.
 - **Upstash free: 500k commands/month, 256 MB.** Fine for this workload with
   `WORKER_DRAIN_DELAY` at 30s.
 - **Vercel Hobby is for non-commercial use.** If Mail Helper starts earning
   money, Vercel's terms require a Pro plan.
+
+## Keeping Supabase awake
+
+[`.github/workflows/keep-supabase-awake.yml`](.github/workflows/keep-supabase-awake.yml)
+pings the project every 3 days, which resets the inactivity timer. To turn it
+on, add two repository secrets (**Settings → Secrets and variables → Actions**):
+
+| Secret | Where to find it |
+| --- | --- |
+| `SUPABASE_URL` | `https://<ref>.supabase.co` — Project Settings → API |
+| `SUPABASE_ANON_KEY` | the anon/public key on that same page |
+
+Actions minutes are free on public repos. Without the secrets the job exits
+quietly, so leaving it unconfigured breaks nothing.
+
+One caveat: **GitHub disables scheduled workflows in a repo with no commits for
+60 days.** If you stop touching the repo entirely, the keep-alive stops too and
+the project will eventually pause anyway. Re-enable it from the Actions tab.
+
+If the pause bites you, the project is not lost — data is retained, and
+resuming restores it exactly as it was.
 
 ## Alternatives
 
@@ -174,9 +226,14 @@ Note that most other student-pack offers (DigitalOcean's $200, Heroku,
 Namecheap) **do** require a card for identity verification, which is why the
 main path above avoids them.
 
-**Other swaps that keep the zero-card property:** Supabase or Vercel Postgres
-in place of Neon; Redis Cloud's free 30 MB in place of Upstash. Both are drop-in
-— only `DATABASE_URL` / `REDIS_URL` change.
+**If the 7-day pause becomes annoying** — [Neon](https://neon.tech)'s free tier
+is a drop-in replacement that autosuspends but *auto-resumes* on the next query
+in about a second, so an idle app never appears broken. Only `DATABASE_URL` and
+`DIRECT_URL` change (Neon's pooled host contains `-pooler`; its direct string is
+the `DIRECT_URL`), and you can delete the keep-awake workflow. Also no card.
+
+**Redis swap:** Redis Cloud's free 30 MB works in place of Upstash — only
+`REDIS_URL` changes.
 
 ## Troubleshooting
 
@@ -186,5 +243,8 @@ in place of Neon; Redis Cloud's free 30 MB in place of Upstash. Both are drop-in
 | Worker logs `ECONNRESET` / TLS errors on Redis | `REDIS_URL` is `redis://` where Upstash needs `rediss://` |
 | Sends fail with `Unsupported state or unable to authenticate data` | `ENCRYPTION_KEY` differs between Vercel and Render |
 | Campaign stuck on "queued", worker idle | `WORKER_WAKE_URL` unset or wrong on Vercel; the worker only wakes when something hits it |
-| `Too many connections` from Postgres | Using the direct Neon string on Vercel instead of the pooled one |
+| `Too many connections` from Postgres | Using the session pooler (5432) on Vercel instead of the transaction pooler (6543) |
+| Every page errors, Supabase dashboard says "Paused" | 7 days of no requests — click Restore, then set up the keep-awake workflow |
+| `prisma db push` hangs or `ENETUNREACH` | Using `db.<ref>.supabase.co` (IPv6-only) as `DIRECT_URL` instead of the session pooler |
+| `prepared statement "s0" already exists` | `?pgbouncer=true` missing from `DATABASE_URL` |
 | Send fails with `Invalid login` | Gmail app password wrong, or 2-Step Verification is off on that account |

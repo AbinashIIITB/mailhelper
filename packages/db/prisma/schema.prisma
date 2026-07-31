@@ -7,7 +7,13 @@ generator client {
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+  // Pooled connection (Supabase Supavisor / Neon pooler). Every serverless cold
+  // start opens its own connection, so the app must never use a direct one.
+  url       = env("DATABASE_URL")
+  // Schema changes can't run through a transaction-mode pooler. Only `prisma
+  // db push` / `migrate` read this, so it's needed locally but not in the
+  // deployed web or worker environments.
+  directUrl = env("DIRECT_URL")
 }
 
 model User {
