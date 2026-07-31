@@ -12,7 +12,8 @@ services:
     name: mailhelper-worker
     runtime: node
     plan: free
-    region: oregon
+    # Closest free region to the Supabase/Upstash instances in ap-south-1.
+    region: singapore
     branch: main
     healthCheckPath: /healthz
     buildCommand: npm ci && npm run db:generate
