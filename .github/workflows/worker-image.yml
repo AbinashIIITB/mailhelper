@@ -1,0 +1,44 @@
+# Builds the worker image and publishes it to GitHub Container Registry, which
+# is free for public repositories. Azure Container Apps pulls it from there, so
+# there is no need to pay for a container registry.
+#
+# The first push creates the package as private - make it public once at
+# https://github.com/users/AbinashIIITB/packages/container/mailhelper-worker/settings
+# so Azure can pull it without registry credentials.
+name: Build worker image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/worker/**"
+      - "packages/**"
+      - "package-lock.json"
+      - ".github/workflows/worker-image.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/worker/Dockerfile
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/mailhelper-worker:latest
+            ghcr.io/${{ github.repository_owner }}/mailhelper-worker:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
