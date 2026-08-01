@@ -7,6 +7,7 @@
   "scripts": {
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
+    "db:lockdown": "prisma db execute --file prisma/lockdown.sql --schema prisma/schema.prisma",
     "postinstall": "prisma generate",
     "typecheck": "tsc --noEmit"
   },

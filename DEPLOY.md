@@ -82,11 +82,33 @@ then:
 
 ```bash
 npm run db:push
+npm run db:lockdown   # ← do not skip this
 ```
 
-Re-run this whenever `packages/db/prisma/schema.prisma` changes. Note that this
-file currently points at your local Docker Postgres — swap the values to deploy,
-or keep two copies and switch between them.
+Re-run **both** whenever `packages/db/prisma/schema.prisma` changes.
+
+### Why `db:lockdown` is not optional
+
+Supabase publishes the `public` schema through its REST Data API and grants the
+`anon` role access to every table created there. The `anon` key is designed to
+be embedded in client-side code — Supabase treats it as public — so those
+default grants make every row in your database world-readable, including
+`User.passwordHash` and your entire recipient lists.
+
+Mail Helper never uses the Data API; it talks to Postgres directly through
+Prisma as the table owner. So
+[`lockdown.sql`](packages/db/prisma/lockdown.sql) revokes those roles entirely
+and enables RLS as a second layer. The app is unaffected — table owners bypass
+RLS.
+
+Verify it worked (should return `permission denied`, not data):
+
+```bash
+curl "https://<ref>.supabase.co/rest/v1/User?select=*" -H "apikey: <anon-key>"
+```
+
+A `prisma db push` that recreates a table can restore the default grants, which
+is why `db:lockdown` runs after every push.
 
 ## 5. Worker — Render
 
@@ -188,15 +210,19 @@ blocking read instantly, so the higher value costs no latency.
 ## Keeping Supabase awake
 
 [`.github/workflows/keep-supabase-awake.yml`](.github/workflows/keep-supabase-awake.yml)
-pings the project every 3 days, which resets the inactivity timer. To turn it
-on, add two repository secrets (**Settings → Secrets and variables → Actions**):
+runs a trivial query every 3 days, which resets the inactivity timer. To turn
+it on, add one repository secret (**Settings → Secrets and variables →
+Actions**):
 
-| Secret | Where to find it |
+| Secret | Value |
 | --- | --- |
-| `SUPABASE_URL` | `https://<ref>.supabase.co` — Project Settings → API |
-| `SUPABASE_ANON_KEY` | the anon/public key on that same page |
+| `SUPABASE_DB_URL` | your `DIRECT_URL` — the session pooler string, port 5432 |
 
-Actions minutes are free on public repos. Without the secrets the job exits
+It queries Postgres directly rather than calling the REST API, because
+[`db:lockdown`](#why-dblockdown-is-not-optional) strips the Data API roles of
+all access.
+
+Actions minutes are free on public repos. Without the secret the job exits
 quietly, so leaving it unconfigured breaks nothing.
 
 One caveat: **GitHub disables scheduled workflows in a repo with no commits for

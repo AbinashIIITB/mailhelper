@@ -11,7 +11,8 @@
     "build": "turbo build",
     "typecheck": "turbo typecheck",
     "db:generate": "npm run db:generate -w @mailhelper/db",
-    "db:push": "npm run db:push -w @mailhelper/db"
+    "db:push": "npm run db:push -w @mailhelper/db",
+    "db:lockdown": "npm run db:lockdown -w @mailhelper/db"
   },
   "devDependencies": {
     "turbo": "^2.10.0"
