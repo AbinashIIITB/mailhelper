@@ -62,7 +62,8 @@ model Campaign {
   user         User           @relation(fields: [userId], references: [id], onDelete: Cascade)
   recipients   Recipient[]
 
-  @@index([userId])
+  // Matches the campaign list and dashboard: filter by owner, newest first.
+  @@index([userId, updatedAt])
 }
 
 enum RecipientStatus {
@@ -84,4 +85,6 @@ model Recipient {
   campaign   Campaign        @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId, status])
+  // Serves the rolling 24h send count that enforces the daily Gmail cap.
+  @@index([status, sentAt])
 }

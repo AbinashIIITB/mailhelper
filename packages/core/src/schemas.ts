@@ -28,7 +28,9 @@ export const smtpConfigSchema = z.object({
 export const campaignInputSchema = z.object({
   name: z.string().min(1, 'Name is required').max(200),
   subject: z.string().max(500).default(''),
-  bodyTemplate: z.string().default(''),
+  // Generous for an email, but bounded - the body is stored per campaign and
+  // merged per recipient.
+  bodyTemplate: z.string().max(100_000, 'Message body is too long').default(''),
 });
 
 export const recipientSchema = z.object({

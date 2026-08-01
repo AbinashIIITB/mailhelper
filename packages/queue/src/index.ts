@@ -1,4 +1,5 @@
-import { Queue, type ConnectionOptions } from 'bullmq';
+import { Queue } from 'bullmq';
+import type { RedisOptions } from 'ioredis';
 
 /**
  * Shared BullMQ setup. The web app is the PRODUCER (enqueues send jobs) and
@@ -13,7 +14,7 @@ export interface CampaignSendJob {
   recipientId: string;
 }
 
-export function getRedisConnection(): ConnectionOptions {
+export function getRedisConnection(): RedisOptions {
   const url = process.env.REDIS_URL ?? 'redis://localhost:6379';
   const parsed = new URL(url);
   // Managed providers (Upstash, Redis Cloud, …) hand out `rediss://` URLs and
@@ -49,6 +50,26 @@ export async function wakeWorker(): Promise<void> {
     // A cold start takes longer than the timeout, but the request has already
     // triggered the resume — the worker will boot and drain the queue. Nothing
     // here is worth failing the user's send over.
+  }
+}
+
+// One addBulk per chunk. A campaign can hold thousands of recipients, and
+// handing that to Redis as a single pipeline risks the request-size limits
+// hosted providers impose.
+const ENQUEUE_CHUNK = 500;
+
+export async function enqueueSends(
+  campaignId: string,
+  recipientIds: string[],
+): Promise<void> {
+  const queue = getCampaignQueue();
+  for (let i = 0; i < recipientIds.length; i += ENQUEUE_CHUNK) {
+    await queue.addBulk(
+      recipientIds.slice(i, i + ENQUEUE_CHUNK).map((recipientId) => ({
+        name: 'send',
+        data: { campaignId, recipientId },
+      })),
+    );
   }
 }
 

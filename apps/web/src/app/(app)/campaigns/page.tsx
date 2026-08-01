@@ -5,9 +5,18 @@ import { Badge, Button, Card } from "@/components/ui";
 
 export default async function CampaignsPage() {
   const userId = await requireUserId();
+  // Only what the list renders - bodyTemplate can be tens of kilobytes.
   const campaigns = await prisma.campaign.findMany({
     where: { userId },
     orderBy: { updatedAt: "desc" },
+    select: {
+      id: true,
+      name: true,
+      status: true,
+      total: true,
+      sent: true,
+      failed: true,
+    },
   });
 
   return (

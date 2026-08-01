@@ -4,10 +4,30 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Button, Card, Input, Label, Textarea, cn } from "@/components/ui";
-import { extractPlaceholders, mergeTemplate, missingColumns } from "@/lib/template";
+// Subpath import: the core barrel pulls in nodemailer and node:crypto, which
+// must not follow this client component into the browser bundle.
+import {
+  extractPlaceholders,
+  mergeTemplate,
+  missingColumns,
+} from "@mailhelper/core/template";
 import { parseDelimited, isValidEmail } from "@/lib/recipients";
 
 type Row = { email: string; variables: Record<string, string> };
+
+/** The slice of a campaign that changes while it sends. */
+interface LiveStatus {
+  status: string;
+  total: number;
+  sent: number;
+  failed: number;
+  recipients: {
+    id: string;
+    email: string;
+    status: string;
+    error: string | null;
+  }[];
+}
 
 interface CampaignData {
   id: string;
@@ -35,8 +55,16 @@ export function CampaignEditor({
   smtpConnected: boolean;
 }) {
   const router = useRouter();
-  const locked = campaign.status === "queued" || campaign.status === "sending";
-  const showStatus = campaign.status !== "draft";
+
+  const [live, setLive] = useState<LiveStatus>({
+    status: campaign.status,
+    total: campaign.total,
+    sent: campaign.sent,
+    failed: campaign.failed,
+    recipients: campaign.recipients,
+  });
+  const locked = live.status === "queued" || live.status === "sending";
+  const showStatus = live.status !== "draft";
 
   const [subject, setSubject] = useState(campaign.subject);
   const [body, setBody] = useState(campaign.bodyTemplate);
@@ -66,11 +94,22 @@ export function CampaignEditor({
     [placeholders, columns],
   );
 
+  // Poll just the progress while sending. Refreshing the whole route instead
+  // would re-send every recipient's variables every three seconds.
   useEffect(() => {
     if (!locked) return;
-    const t = setInterval(() => router.refresh(), 3000);
+    const t = setInterval(async () => {
+      const res = await fetch(`/api/campaigns/${campaign.id}/status`);
+      if (!res.ok) return;
+      const next: LiveStatus = await res.json();
+      setLive(next);
+      // Sending finished - pull the rest of the page back in sync once.
+      if (next.status !== "queued" && next.status !== "sending") {
+        router.refresh();
+      }
+    }, 3000);
     return () => clearInterval(t);
-  }, [locked, router]);
+  }, [locked, campaign.id, router]);
 
   const previewVars: Record<string, string> = useMemo(() => {
     if (rows[0]) return { email: rows[0].email, ...rows[0].variables };
@@ -159,16 +198,22 @@ export function CampaignEditor({
       setError(data.error ?? "Could not start sending");
       return;
     }
-    router.refresh();
+    // Flip to queued locally so the progress poll starts on the next tick.
+    setLive((l) => ({ ...l, status: "queued", total: rows.length }));
   }
 
   async function onResendFailed() {
     setSaving(true);
-    await fetch(`/api/campaigns/${campaign.id}/resend-failed`, {
+    const res = await fetch(`/api/campaigns/${campaign.id}/resend-failed`, {
       method: "POST",
     });
     setSaving(false);
-    router.refresh();
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      setError(data.error ?? "Could not resend");
+      return;
+    }
+    setLive((l) => ({ ...l, status: "queued", failed: 0 }));
   }
 
   async function onDelete() {
@@ -185,7 +230,7 @@ export function CampaignEditor({
             &lt; Campaigns
           </Link>
           <h1 className="text-2xl font-bold">{campaign.name}</h1>
-          <Badge status={campaign.status} />
+          <Badge status={live.status} />
         </div>
         <Button variant="ghost" onClick={onDelete} className="text-red-700">
           Delete
@@ -204,7 +249,7 @@ export function CampaignEditor({
 
       {showStatus && (
         <StatusPanel
-          campaign={campaign}
+          live={live}
           locked={locked}
           onResendFailed={onResendFailed}
           busy={saving}
@@ -326,26 +371,26 @@ function Preview({ subject, body }: { subject: string; body: string }) {
 }
 
 function StatusPanel({
-  campaign,
+  live,
   locked,
   onResendFailed,
   busy,
 }: {
-  campaign: CampaignData;
+  live: LiveStatus;
   locked: boolean;
   onResendFailed: () => void;
   busy: boolean;
 }) {
-  const pct = campaign.total
-    ? Math.round(((campaign.sent + campaign.failed) / campaign.total) * 100)
+  const pct = live.total
+    ? Math.round(((live.sent + live.failed) / live.total) * 100)
     : 0;
   return (
     <Card className="space-y-3">
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Sending status</h2>
-        {campaign.failed > 0 && !locked && (
+        {live.failed > 0 && !locked && (
           <Button variant="secondary" onClick={onResendFailed} disabled={busy}>
-            Resend {campaign.failed} failed
+            Resend {live.failed} failed
           </Button>
         )}
       </div>
@@ -353,13 +398,13 @@ function StatusPanel({
         <div className="h-full bg-blue-700" style={{ width: `${pct}%` }} />
       </div>
       <div className="flex gap-6 text-sm">
-        <span>{campaign.total} total</span>
-        <span className="text-green-700">{campaign.sent} sent</span>
-        <span className="text-red-700">{campaign.failed} failed</span>
+        <span>{live.total} total</span>
+        <span className="text-green-700">{live.sent} sent</span>
+        <span className="text-red-700">{live.failed} failed</span>
         {locked && <span className="text-gray-500">refreshing...</span>}
       </div>
 
-      {campaign.recipients.length > 0 && (
+      {live.recipients.length > 0 && (
         <div className="max-h-72 overflow-auto border border-gray-500">
           <table className="w-full text-left text-sm">
             <thead className="sticky top-0 bg-gray-200 text-xs uppercase text-gray-700">
@@ -370,7 +415,7 @@ function StatusPanel({
               </tr>
             </thead>
             <tbody>
-              {campaign.recipients.map((r) => (
+              {live.recipients.map((r) => (
                 <tr key={r.id} className="border-t border-gray-200">
                   <td className="px-3 py-2">{r.email}</td>
                   <td className="px-3 py-2">
@@ -462,7 +507,7 @@ function RecipientsSection({
   }
 
   // Table view: force the grid columns to match the message's blanks.
-  function useTemplateColumns() {
+  function syncColumnsToTemplate() {
     setColumns(templateCols);
     setRows(
       rows.map((r) => {
@@ -476,7 +521,7 @@ function RecipientsSection({
 
   function switchManualView(view: "list" | "table") {
     setManualView(view);
-    if (view === "table") useTemplateColumns();
+    if (view === "table") syncColumnsToTemplate();
   }
 
   const tabs = [
@@ -645,7 +690,7 @@ function RecipientsSection({
                     <Button variant="secondary" onClick={() => addRow(templateCols)}>
                       Add row
                     </Button>
-                    <Button variant="secondary" onClick={useTemplateColumns}>
+                    <Button variant="secondary" onClick={syncColumnsToTemplate}>
                       Refresh columns from message
                     </Button>
                   </div>

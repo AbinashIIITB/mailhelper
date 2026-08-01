@@ -7,11 +7,22 @@ export default async function DashboardPage() {
   const userId = await requireUserId();
 
   const [smtp, campaigns] = await Promise.all([
-    prisma.smtpConfig.findUnique({ where: { userId } }),
+    prisma.smtpConfig.findUnique({
+      where: { userId },
+      select: { id: true },
+    }),
     prisma.campaign.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 5,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        total: true,
+        sent: true,
+        failed: true,
+      },
     }),
   ]);
 
