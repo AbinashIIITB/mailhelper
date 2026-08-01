@@ -1,7 +1,8 @@
 import Link from "next/link";
 import { prisma } from "@mailhelper/db";
 import { requireUserId } from "@/lib/session";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
+import { LinkButton } from "@/components/link-button";
 
 export default async function CampaignsPage() {
   const userId = await requireUserId();
@@ -23,9 +24,7 @@ export default async function CampaignsPage() {
     <div className="space-y-5">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Campaigns</h1>
-        <Link href="/campaigns/new">
-          <Button>New campaign</Button>
-        </Link>
+        <LinkButton href="/campaigns/new">New campaign</LinkButton>
       </div>
 
       {campaigns.length === 0 ? (

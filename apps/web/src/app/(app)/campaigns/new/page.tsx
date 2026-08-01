@@ -50,7 +50,7 @@ export default function NewCampaignPage() {
             </p>
           </div>
           {error && <p className="text-sm text-red-700">{error}</p>}
-          <Button type="submit" disabled={loading}>
+          <Button type="submit" loading={loading}>
             {loading ? "Creating..." : "Create"}
           </Button>
         </form>

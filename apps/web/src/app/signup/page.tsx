@@ -32,7 +32,6 @@ export default function SignupPage() {
     }
 
     await signIn("credentials", { email, password, redirect: false });
-    setLoading(false);
     router.push("/dashboard");
     router.refresh();
   }
@@ -68,7 +67,7 @@ export default function SignupPage() {
             <p className="mt-1 text-xs text-gray-500">At least 8 characters</p>
           </div>
           {error && <p className="text-sm text-red-700">{error}</p>}
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" loading={loading}>
             {loading ? "Creating..." : "Create account"}
           </Button>
         </form>

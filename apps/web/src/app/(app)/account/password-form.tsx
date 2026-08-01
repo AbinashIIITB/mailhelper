@@ -87,7 +87,7 @@ export function PasswordForm() {
           </p>
         )}
 
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" loading={loading}>
           {loading ? "Saving..." : "Change password"}
         </Button>
       </form>

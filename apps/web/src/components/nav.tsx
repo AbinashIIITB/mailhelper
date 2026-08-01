@@ -1,9 +1,10 @@
 "use client";
 
-import Link from "next/link";
+import { useState } from "react";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { signOut } from "next-auth/react";
-import { Button, cn } from "@/components/ui";
+import { Button, Spinner, cn } from "@/components/ui";
 
 const links = [
   { href: "/dashboard", label: "Dashboard" },
@@ -12,8 +13,24 @@ const links = [
   { href: "/account", label: "Account" },
 ];
 
+/**
+ * Lives inside <Link> so it can read that link's navigation state. Server
+ * pages here take a database round-trip, which is long enough that a click
+ * with no feedback reads as a dead button.
+ */
+function NavLabel({ label }: { label: string }) {
+  const { pending } = useLinkStatus();
+  return (
+    <span className="inline-flex items-center gap-1.5">
+      {label}
+      {pending && <Spinner className="size-3" />}
+    </span>
+  );
+}
+
 export function Nav({ email }: { email?: string | null }) {
   const pathname = usePathname();
+  const [signingOut, setSigningOut] = useState(false);
   return (
     <header className="border-b-2 border-gray-500 bg-white">
       <div className="mx-auto flex max-w-5xl items-center justify-between px-5 py-2">
@@ -34,7 +51,7 @@ export function Nav({ email }: { email?: string | null }) {
                     active ? "font-bold text-black underline" : "text-blue-700",
                   )}
                 >
-                  {l.label}
+                  <NavLabel label={l.label} />
                 </Link>
               );
             })}
@@ -47,7 +64,14 @@ export function Nav({ email }: { email?: string | null }) {
           >
             {email}
           </Link>
-          <Button variant="secondary" onClick={() => signOut({ callbackUrl: "/" })}>
+          <Button
+            variant="secondary"
+            loading={signingOut}
+            onClick={() => {
+              setSigningOut(true);
+              signOut({ callbackUrl: "/" });
+            }}
+          >
             Sign out
           </Button>
         </div>

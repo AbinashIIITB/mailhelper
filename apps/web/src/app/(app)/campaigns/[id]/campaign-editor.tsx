@@ -82,6 +82,7 @@ export function CampaignEditor({
   );
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -218,6 +219,7 @@ export function CampaignEditor({
 
   async function onDelete() {
     if (!confirm("Delete this campaign? This cannot be undone.")) return;
+    setDeleting(true);
     await fetch(`/api/campaigns/${campaign.id}`, { method: "DELETE" });
     router.push("/campaigns");
   }
@@ -232,7 +234,12 @@ export function CampaignEditor({
           <h1 className="text-2xl font-bold">{campaign.name}</h1>
           <Badge status={live.status} />
         </div>
-        <Button variant="ghost" onClick={onDelete} className="text-red-700">
+        <Button
+          variant="ghost"
+          onClick={onDelete}
+          loading={deleting}
+          className="text-red-700"
+        >
           Delete
         </Button>
       </div>
@@ -335,11 +342,11 @@ export function CampaignEditor({
       {!locked && (
         <div className="flex items-center gap-3 border-t-2 border-gray-400 pt-4">
           {dirty && (
-            <Button variant="secondary" onClick={saveRecipients} disabled={saving}>
+            <Button variant="secondary" onClick={saveRecipients} loading={saving}>
               Save recipients
             </Button>
           )}
-          <Button onClick={onSend} disabled={saving}>
+          <Button onClick={onSend} loading={saving}>
             {saving
               ? "Working..."
               : `Send to ${rows.length} recipient${rows.length === 1 ? "" : "s"}`}
@@ -389,7 +396,7 @@ function StatusPanel({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-bold">Sending status</h2>
         {live.failed > 0 && !locked && (
-          <Button variant="secondary" onClick={onResendFailed} disabled={busy}>
+          <Button variant="secondary" onClick={onResendFailed} loading={busy}>
             Resend {live.failed} failed
           </Button>
         )}
