@@ -9,6 +9,7 @@ const links = [
   { href: "/dashboard", label: "Dashboard" },
   { href: "/campaigns", label: "Campaigns" },
   { href: "/settings", label: "Settings" },
+  { href: "/account", label: "Account" },
 ];
 
 export function Nav({ email }: { email?: string | null }) {
@@ -40,7 +41,12 @@ export function Nav({ email }: { email?: string | null }) {
           </nav>
         </div>
         <div className="flex items-center gap-2">
-          <span className="hidden text-xs text-gray-600 sm:inline">{email}</span>
+          <Link
+            href="/account"
+            className="hidden text-xs text-gray-600 sm:inline"
+          >
+            {email}
+          </Link>
           <Button variant="secondary" onClick={() => signOut({ callbackUrl: "/" })}>
             Sign out
           </Button>
