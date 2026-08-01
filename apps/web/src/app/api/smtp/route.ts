@@ -5,22 +5,13 @@ import {
   encrypt,
   verifyGmailTransport,
 } from "@mailhelper/core";
-import { auth } from "@/auth";
+import { badRequest, withUser } from "@/lib/api";
 
-export async function POST(req: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const POST = withUser(async (userId, req) => {
   const body = await req.json().catch(() => null);
   const parsed = smtpConfigSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
+    return badRequest(parsed.error.issues[0]?.message ?? "Invalid input");
   }
 
   const { gmailAddress, appPassword, fromName } = parsed.data;
@@ -29,12 +20,8 @@ export async function POST(req: Request) {
   try {
     await verifyGmailTransport({ gmailAddress, appPassword });
   } catch {
-    return NextResponse.json(
-      {
-        error:
-          "Could not sign in to Gmail. Check the address and app password (2-Step Verification must be on).",
-      },
-      { status: 400 },
+    return badRequest(
+      "Could not sign in to Gmail. Check the address and app password (2-Step Verification must be on).",
     );
   }
 
@@ -47,14 +34,9 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json({ ok: true });
-}
+});
 
-export async function DELETE() {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+export const DELETE = withUser(async (userId) => {
   await prisma.smtpConfig.deleteMany({ where: { userId } });
   return NextResponse.json({ ok: true });
-}
+});

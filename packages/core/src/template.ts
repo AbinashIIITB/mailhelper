@@ -39,3 +39,24 @@ export function missingColumns(
   const set = new Set(columns);
   return placeholders.filter((p) => !set.has(p));
 }
+
+const HTML_ESCAPES: Record<string, string> = {
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+};
+
+/**
+ * Render a merged body as the HTML half of an email.
+ *
+ * Everything is escaped, including the template itself: campaigns are written
+ * as plain text and previewed as plain text, so any markup reaching this point
+ * came from a spreadsheet cell rather than from an author who meant it.
+ */
+export function renderHtmlBody(merged: string): string {
+  return merged
+    .replace(/[&<>"']/g, (c) => HTML_ESCAPES[c])
+    .replace(/\r?\n/g, '<br>');
+}

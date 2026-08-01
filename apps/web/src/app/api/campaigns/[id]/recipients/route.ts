@@ -1,38 +1,26 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@mailhelper/db";
 import { recipientsPayloadSchema } from "@mailhelper/core";
-import { auth } from "@/auth";
+import { badRequest, conflict, notFound, withUser } from "@/lib/api";
 
-export async function PUT(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+type Params = { id: string };
 
+export const PUT = withUser<Params>(async (userId, req, { params }) => {
   const { id } = await params;
   const campaign = await prisma.campaign.findFirst({
     where: { id, userId },
+    select: { status: true },
   });
-  if (!campaign) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!campaign) return notFound();
   if (campaign.status === "queued" || campaign.status === "sending") {
-    return NextResponse.json(
-      { error: "Cannot change recipients while sending" },
-      { status: 409 },
-    );
+    return conflict("Cannot change recipients while sending");
   }
 
   const body = await req.json().catch(() => null);
   const parsed = recipientsPayloadSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: "Invalid recipients. Check that every row has a valid email." },
-      { status: 400 },
+    return badRequest(
+      "Invalid recipients. Check that every row has a valid email.",
     );
   }
 
@@ -60,4 +48,4 @@ export async function PUT(
   ]);
 
   return NextResponse.json({ ok: true, count: recipients.length });
-}
+});

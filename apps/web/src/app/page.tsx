@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { Button } from "@/components/ui";
+import { LinkButton } from "@/components/link-button";
 
 export default async function Home() {
   const session = await auth();
@@ -23,9 +24,7 @@ export default async function Home() {
           Gmail - marks, credentials, invoices, anything private.
         </p>
         <div className="flex items-center gap-3">
-          <Link href="/signup">
-            <Button>Get started free</Button>
-          </Link>
+          <LinkButton href="/signup">Get started free</LinkButton>
           <Link href="/login">
             <Button variant="secondary">Sign in</Button>
           </Link>

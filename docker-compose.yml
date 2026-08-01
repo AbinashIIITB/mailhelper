@@ -7,8 +7,10 @@ services:
       POSTGRES_USER: dev
       POSTGRES_PASSWORD: dev
     ports:
-      # Host 55432 to avoid clashing with other local/Docker Postgres instances
-      - "55432:5432"
+      # Host 55432 to avoid clashing with other local/Docker Postgres instances.
+      # Override with POSTGRES_PORT if something else already holds it -
+      # Compose otherwise starts the container with no published port at all.
+      - "${POSTGRES_PORT:-55432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -17,8 +19,8 @@ services:
     image: redis:7-alpine
     container_name: mailhelper-redis
     ports:
-      # Host 6380 to avoid clashing with a native Redis on 6379
-      - "6380:6379"
+      # Host 6380 to avoid clashing with a native Redis on 6379.
+      - "${REDIS_PORT:-6380}:6379"
     volumes:
       - redis_data:/data
     restart: unless-stopped

@@ -11,6 +11,7 @@ import {
   decrypt,
   createGmailTransport,
   mergeTemplate,
+  renderHtmlBody,
 } from "@mailhelper/core";
 
 const DAILY_LIMIT = Number(process.env.DAILY_SEND_LIMIT ?? 450);
@@ -39,15 +40,37 @@ async function getTransport(userId: string) {
   return entry;
 }
 
+/**
+ * Rolling 24h send count per user.
+ *
+ * The underlying COUNT joins every recipient the user has ever had, so running
+ * it per job would dominate the cost of sending. It is re-read once a minute
+ * and incremented locally in between; this process is the only sender, so the
+ * cached value tracks reality exactly.
+ */
+const RECOUNT_AFTER_MS = 60_000;
+const dailyCounts = new Map<string, { count: number; readAt: number }>();
+
 async function sentInLast24h(userId: string): Promise<number> {
-  const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
-  return prisma.recipient.count({
+  const cached = dailyCounts.get(userId);
+  if (cached && Date.now() - cached.readAt < RECOUNT_AFTER_MS) {
+    return cached.count;
+  }
+
+  const count = await prisma.recipient.count({
     where: {
       status: "sent",
-      sentAt: { gte: since },
+      sentAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
       campaign: { userId },
     },
   });
+  dailyCounts.set(userId, { count, readAt: Date.now() });
+  return count;
+}
+
+function countSend(userId: string) {
+  const cached = dailyCounts.get(userId);
+  if (cached) cached.count += 1;
 }
 
 /** After each job, flip the campaign to completed/failed once nothing is pending. */
@@ -108,15 +131,19 @@ async function processJob(job: Job<CampaignSendJob>) {
 
   const { transport, from } = await getTransport(campaign.userId);
   const vars = { email: recipient.email, ...(recipient.variables as object) };
+  const body = mergeTemplate(campaign.bodyTemplate, vars);
 
   try {
     await transport.sendMail({
       from,
       to: recipient.email,
       subject: mergeTemplate(campaign.subject, vars),
-      html: mergeTemplate(campaign.bodyTemplate, vars).replace(/\n/g, "<br>"),
-      text: mergeTemplate(campaign.bodyTemplate, vars),
+      // Escaped, so a spreadsheet cell containing markup arrives as the text
+      // the sender saw in the preview rather than as HTML.
+      html: renderHtmlBody(body),
+      text: body,
     });
+    countSend(campaign.userId);
 
     await prisma.$transaction([
       prisma.recipient.update({

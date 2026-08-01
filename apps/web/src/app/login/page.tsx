@@ -25,11 +25,13 @@ function LoginForm() {
       password,
       redirect: false,
     });
-    setLoading(false);
     if (res?.error) {
+      setLoading(false);
       setError("Invalid email or password");
       return;
     }
+    // Stays loading until the destination renders - this page is about to
+    // unmount, and stopping the spinner first just looks like a stall.
     router.push(callbackUrl);
     router.refresh();
   }
@@ -62,7 +64,7 @@ function LoginForm() {
           />
         </div>
         {error && <p className="text-sm text-red-700">{error}</p>}
-        <Button type="submit" className="w-full" disabled={loading}>
+        <Button type="submit" className="w-full" loading={loading}>
           {loading ? "Signing in..." : "Sign in"}
         </Button>
       </form>

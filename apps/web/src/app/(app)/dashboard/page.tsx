@@ -1,17 +1,29 @@
 import Link from "next/link";
 import { prisma } from "@mailhelper/db";
 import { requireUserId } from "@/lib/session";
-import { Badge, Button, Card } from "@/components/ui";
+import { Badge, Card } from "@/components/ui";
+import { LinkButton } from "@/components/link-button";
 
 export default async function DashboardPage() {
   const userId = await requireUserId();
 
   const [smtp, campaigns] = await Promise.all([
-    prisma.smtpConfig.findUnique({ where: { userId } }),
+    prisma.smtpConfig.findUnique({
+      where: { userId },
+      select: { id: true },
+    }),
     prisma.campaign.findMany({
       where: { userId },
       orderBy: { updatedAt: "desc" },
       take: 5,
+      select: {
+        id: true,
+        name: true,
+        status: true,
+        total: true,
+        sent: true,
+        failed: true,
+      },
     }),
   ]);
 
@@ -19,9 +31,7 @@ export default async function DashboardPage() {
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        <Link href="/campaigns/new">
-          <Button>New campaign</Button>
-        </Link>
+        <LinkButton href="/campaigns/new">New campaign</LinkButton>
       </div>
 
       {!smtp && (
@@ -33,9 +43,7 @@ export default async function DashboardPage() {
                 Add your Gmail address and an app password in Settings.
               </p>
             </div>
-            <Link href="/settings">
-              <Button>Connect Gmail</Button>
-            </Link>
+            <LinkButton href="/settings">Connect Gmail</LinkButton>
           </div>
         </Card>
       )}

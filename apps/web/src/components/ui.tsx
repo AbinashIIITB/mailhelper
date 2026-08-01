@@ -4,12 +4,30 @@ export function cn(...classes: (string | false | null | undefined)[]) {
   return classes.filter(Boolean).join(" ");
 }
 
+export function Spinner({ className }: { className?: string }) {
+  return (
+    <span
+      role="status"
+      aria-label="Loading"
+      className={cn(
+        "inline-block size-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-r-transparent align-[-2px]",
+        className,
+      )}
+    />
+  );
+}
+
 export function Button({
   className,
   variant = "primary",
+  loading = false,
+  disabled,
+  children,
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: "primary" | "secondary" | "danger" | "ghost";
+  /** Shows a spinner and blocks further clicks while an action is in flight. */
+  loading?: boolean;
 }) {
   const variants: Record<string, string> = {
     primary: "bg-blue-700 text-white border border-blue-800 hover:bg-blue-800 disabled:opacity-50",
@@ -19,13 +37,25 @@ export function Button({
   };
   return (
     <button
+      disabled={disabled || loading}
+      aria-busy={loading || undefined}
       className={cn(
-        "inline-flex h-9 items-center justify-center gap-2 px-3 text-sm disabled:cursor-not-allowed",
+        "inline-flex h-9 items-center justify-center gap-2 px-3 text-sm disabled:cursor-not-allowed disabled:opacity-60",
         variants[variant],
         className,
       )}
       {...props}
-    />
+    >
+      {loading && <Spinner />}
+      {children}
+    </button>
+  );
+}
+
+/** Full-width shimmer block for loading skeletons. */
+export function Skeleton({ className }: { className?: string }) {
+  return (
+    <div className={cn("animate-pulse bg-gray-200", className)} aria-hidden />
   );
 }
 

@@ -81,7 +81,7 @@ export function SettingsForm({
         {error && <p className="text-sm text-red-700">{error}</p>}
         {ok && <p className="text-sm text-green-700">Gmail connected and verified.</p>}
 
-        <Button type="submit" disabled={loading}>
+        <Button type="submit" loading={loading}>
           {loading ? "Verifying..." : initial ? "Update connection" : "Connect Gmail"}
         </Button>
       </form>

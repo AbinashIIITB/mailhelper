@@ -1,61 +1,37 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@mailhelper/db";
 import { campaignInputSchema } from "@mailhelper/core";
-import { auth } from "@/auth";
+import { badRequest, conflict, notFound, withUser } from "@/lib/api";
 
-async function requireOwnedCampaign(id: string, userId: string) {
-  const campaign = await prisma.campaign.findFirst({ where: { id, userId } });
-  return campaign;
-}
+type Params = { id: string };
 
-export async function PATCH(
-  req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const PATCH = withUser<Params>(async (userId, req, { params }) => {
   const { id } = await params;
-  const campaign = await requireOwnedCampaign(id, userId);
-  if (!campaign) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  const campaign = await prisma.campaign.findFirst({
+    where: { id, userId },
+    select: { status: true },
+  });
+  if (!campaign) return notFound();
   if (campaign.status === "queued" || campaign.status === "sending") {
-    return NextResponse.json(
-      { error: "Cannot edit a campaign while it is sending" },
-      { status: 409 },
-    );
+    return conflict("Cannot edit a campaign while it is sending");
   }
 
   const body = await req.json().catch(() => null);
   const parsed = campaignInputSchema.partial().safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input" }, { status: 400 });
+    return badRequest(parsed.error.issues[0]?.message ?? "Invalid input");
   }
 
   await prisma.campaign.update({ where: { id }, data: parsed.data });
   return NextResponse.json({ ok: true });
-}
+});
 
-export async function DELETE(
-  _req: Request,
-  { params }: { params: Promise<{ id: string }> },
-) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
+export const DELETE = withUser<Params>(async (userId, _req, { params }) => {
   const { id } = await params;
-  const campaign = await requireOwnedCampaign(id, userId);
-  if (!campaign) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  // Scoping the delete to the owner means an id guessed by someone else
+  // matches nothing, so no separate ownership lookup is needed.
+  const { count } = await prisma.campaign.deleteMany({ where: { id, userId } });
+  if (count === 0) return notFound();
 
-  await prisma.campaign.delete({ where: { id } });
   return NextResponse.json({ ok: true });
-}
+});

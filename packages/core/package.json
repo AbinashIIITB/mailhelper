@@ -14,5 +14,9 @@
   "devDependencies": {
     "@types/nodemailer": "^6.4.15",
     "typescript": "^5.4.5"
+  },
+  "exports": {
+    ".": "./src/index.ts",
+    "./template": "./src/template.ts"
   }
 }

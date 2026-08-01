@@ -36,23 +36,3 @@ export async function verifyGmailTransport(
   }
 }
 
-export interface SendMailInput {
-  from: string;
-  to: string;
-  subject: string;
-  html: string;
-  text?: string;
-}
-
-export async function sendMail(
-  transport: Transporter,
-  input: SendMailInput,
-): Promise<void> {
-  await transport.sendMail({
-    from: input.from,
-    to: input.to,
-    subject: input.subject,
-    html: input.html,
-    text: input.text,
-  });
-}

@@ -2,45 +2,34 @@ import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@mailhelper/db";
 import { changePasswordSchema } from "@mailhelper/core";
-import { auth } from "@/auth";
+import { badRequest, notFound, withUser } from "@/lib/api";
+import { allow } from "@/lib/rate-limit";
 
-export async function POST(req: Request) {
-  const session = await auth();
-  const userId = session?.user?.id;
-  if (!userId) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export const POST = withUser(async (userId, req) => {
+  if (!(await allow(`password:${userId}`, 10, 900))) {
+    return NextResponse.json(
+      { error: "Too many attempts. Try again in a few minutes." },
+      { status: 429 },
+    );
   }
 
   const body = await req.json().catch(() => null);
   const parsed = changePasswordSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json(
-      { error: parsed.error.issues[0]?.message ?? "Invalid input" },
-      { status: 400 },
-    );
+    return badRequest(parsed.error.issues[0]?.message ?? "Invalid input");
   }
 
   const { currentPassword, newPassword } = parsed.data;
 
   const user = await prisma.user.findUnique({ where: { id: userId } });
-  if (!user) {
-    return NextResponse.json({ error: "Account not found" }, { status: 404 });
-  }
+  if (!user) return notFound();
 
   // Re-check the current password so a stolen session can't change it outright.
-  const ok = await bcrypt.compare(currentPassword, user.passwordHash);
-  if (!ok) {
-    return NextResponse.json(
-      { error: "Current password is incorrect" },
-      { status: 400 },
-    );
+  if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+    return badRequest("Current password is incorrect");
   }
-
   if (currentPassword === newPassword) {
-    return NextResponse.json(
-      { error: "New password must be different from the current one" },
-      { status: 400 },
-    );
+    return badRequest("New password must be different from the current one");
   }
 
   await prisma.user.update({
@@ -49,4 +38,4 @@ export async function POST(req: Request) {
   });
 
   return NextResponse.json({ ok: true });
-}
+});
