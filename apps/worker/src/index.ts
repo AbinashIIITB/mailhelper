@@ -229,16 +229,17 @@ server.listen(port, () => console.log(`[worker] health server on :${port}`));
  * flowing. Once the queue goes quiet the pings stop and the instance is allowed
  * to sleep as the free tier intends.
  */
-const publicUrl = process.env.RENDER_EXTERNAL_URL ?? process.env.WORKER_PUBLIC_URL;
+const publicUrl = process.env.WORKER_PUBLIC_URL ?? process.env.RENDER_EXTERNAL_URL;
 const IDLE_AFTER_MS = 10 * 60 * 1000;
+// Comfortably inside the shortest scale-down window we run against (Azure
+// Container Apps idles a replica out after 300s). Pinging at exactly the
+// cooldown is a race the campaign loses.
+const KEEP_ALIVE_MS = 2 * 60 * 1000;
 if (publicUrl) {
-  setInterval(
-    () => {
-      if (Date.now() - lastJobAt > IDLE_AFTER_MS) return;
-      fetch(`${publicUrl.replace(/\/$/, "")}/healthz`).catch(() => {});
-    },
-    5 * 60 * 1000,
-  ).unref();
+  setInterval(() => {
+    if (Date.now() - lastJobAt > IDLE_AFTER_MS) return;
+    fetch(`${publicUrl.replace(/\/$/, "")}/healthz`).catch(() => {});
+  }, KEEP_ALIVE_MS).unref();
 }
 
 async function shutdown() {
