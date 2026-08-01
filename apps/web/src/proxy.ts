@@ -3,7 +3,7 @@ import { authConfig } from "@/auth.config";
 
 const { auth } = NextAuth(authConfig);
 
-const PROTECTED = ["/dashboard", "/settings", "/campaigns"];
+const PROTECTED = ["/dashboard", "/settings", "/campaigns", "/account"];
 
 export default auth((req) => {
   const { pathname } = req.nextUrl;
@@ -21,5 +21,10 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/settings/:path*", "/campaigns/:path*"],
+  matcher: [
+    "/dashboard/:path*",
+    "/settings/:path*",
+    "/campaigns/:path*",
+    "/account/:path*",
+  ],
 };
